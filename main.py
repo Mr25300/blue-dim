@@ -3,7 +3,6 @@ from astral import LocationInfo
 from astral.sun import zenith
 import requests
 import platform
-# import subprocess
 import ctypes
 import ctypes.util
 import time
@@ -12,7 +11,7 @@ import math
 def clamp(n, minimum, maximum):
     return max(minimum, min(maximum, n))
 
-class LocationHandler:
+class LocationTimeHandler:
     location: LocationInfo
 
     def __init__(self):
@@ -26,8 +25,19 @@ class LocationHandler:
         lat, lon = map(float, data["loc"].split(","))
 
         self.set_manual_location(lat, lon)
+    
+    def get_sun_elevation_angle(self):
+        time = datetime.now(timezone.utc)
+        elevation_angle = 90 - zenith(self.location.observer, time, True)
 
-class TempHandler:
+        return elevation_angle
+    
+    def get_night_shift(self):
+        elevation_angle = self.get_sun_elevation_angle()
+
+        return 1 - 1 / (1 + math.exp(-(elevation_angle - 10) / 3))
+
+class TemperatureHandler:
     day_temp: float
     night_temp: float
     dim_percent: float
@@ -68,21 +78,6 @@ class TempHandler:
     def get_temp_brightness(self, night_shift):
         return 1 - self.dim_percent * math.pow(night_shift, self.brightness_gamma)
 
-class NightDetector:
-    def __init__(self):
-        pass
-
-    def get_sun_elevation_angle(self, location: LocationInfo):
-        time = datetime.now(timezone.utc)
-        elevation_angle = 90 - zenith(location.observer, time, True)
-
-        return elevation_angle
-    
-    def get_night_shift(self, location: LocationInfo):
-        elevation_angle = self.get_sun_elevation_angle(location)
-
-        return 1 - 1 / (1 + math.exp(-(elevation_angle - 10) / 3))
-
 class Display:
     platform: str
 
@@ -90,7 +85,6 @@ class Display:
     display: int
     screen: int
     c_int_size: int
-    c_array_type: type[ctypes.Array[ctypes.c_ushort]]
 
     def __init__(self):
         self.platform = platform.system()
@@ -118,50 +112,49 @@ class Display:
         size = ctypes.c_int()
         xf86vm.XF86VidModeGetGammaRampSize(display, screen, ctypes.byref(size))
 
-        c_int_size = size.value
-        c_array_type = ctypes.c_ushort * c_int_size
-
         self.xf86vm = xf86vm
         self.display = display
         self.screen = screen
-        self.c_int_size = c_int_size
-        self.c_array_type = c_array_type
+        self.c_int_size = size.value
     
     def set_display(self, colour: tuple[float, float, float], brightness: float):
-        colour_arrs = []
+        red_arr, green_arr, blue_arr = [(ctypes.c_ushort * self.c_int_size)() for _ in range(3)]
 
-        for i in range(3):
-            val = [int(65535 * (j / self.c_int_size) * colour[i] * brightness) for j in range(self.c_int_size)]
-            arr = self.c_array_type(*val)
+        for i in range(self.c_int_size):
+            val = 65535 * (i / self.c_int_size) * brightness
+            red_arr[i] = int(val * colour[0])
+            green_arr[i] = int(val * colour[1])
+            blue_arr[i] = int(val * colour[2])
 
-            colour_arrs.append(arr)
-
-        self.xf86vm.XF86VidModeSetGammaRamp(self.display, self.screen, self.c_int_size, colour_arrs[0], colour_arrs[1], colour_arrs[2])
+        self.xf86vm.XF86VidModeSetGammaRamp(self.display, self.screen, self.c_int_size, red_arr, green_arr, blue_arr)
 
 class App:
+    night_handler: LocationTimeHandler
+    temp_handler: TemperatureHandler
+    display: Display
+
     def __init__(self):
-        display = Display()
-        display.set_display((1, 1, 1), 1)
+        self.night_handler = LocationTimeHandler()
+        self.temp_handler = TemperatureHandler()
+        self.display = Display()
 
-App()
+        self.night_handler.update_location()
 
-# def update():
-#     current_time = datetime.now(timezone.utc)
-#     latitude, longitude = get_location()
-#     elevation_angle = get_sun_elevation_angle(latitude, longitude, current_time)
+    def start(self):
+        while True:
+            self.update()
 
-#     night_shift = get_night_shift(elevation_angle)
-#     temperature = get_temperature(night_shift)
-#     rgbScale = get_rgb_from_temp(temperature)
-#     brightness = get_brightness(night_shift)
+            time.sleep(30)
+    
+    def update(self):
+        night_shift = self.night_handler.get_night_shift()
+        colour = self.temp_handler.get_temp_colour(night_shift)
+        brightness = self.temp_handler.get_temp_brightness(night_shift)
 
-#     print(rgbScale)
+        print(night_shift)
 
-#     print(elevation_angle)
+        self.display.set_display(colour, brightness)
 
-#     set_display_appearance(rgbScale, brightness)
-
-# while True:
-#     update()
-
-#     time.sleep(60)
+if __name__ == "__main__":
+    app = App()
+    app.start()

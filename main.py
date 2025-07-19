@@ -13,34 +13,37 @@ NEUTRAL_TEMP = 6500
 SHIFT_START_ANGLE = 15
 SHIFT_END_ANGLE = -5
 
-day_temp = 6000 # natural white light
-night_temp = 4000 # orange colour
+day_temp = 6500 # natural white light
+night_temp = 3000 # orange colour
 night_dim_percent = 0.4
 
-def kelvin_to_rgb(temperature):
-    """Convert a color temperature in Kelvin to normalized RGB (0 to 1)."""
-    
-    temp = temperature / 100.0
-    
-    # Calculate RGB components
-    if temp <= 66:
-        r = 1.0
-        g = 0.2908 * math.log(temp) - 1.1196
-        if temp <= 19:
-            b = 0.0
-        else:
-            b = 0.1385 * math.log(temp - 10) - 0.3050
+def clamp(n, minimum, maximum):
+    return max(minimum, min(maximum, n))
+
+def get_rgb_from_temp(temperature):
+    temperature /= 100
+
+    if temperature <= 66:
+        red = 255
     else:
-        r = 0.3297 * (temp - 60) ** -0.133204
-        g = 0.2881 * (temp - 60) ** -0.075515
-        b = 1.0
+        red = 329.698727446 * ((temperature - 60) ** -0.1332047592)
+        red = clamp(red, 0, 255)
+
+    if temperature <= 66:
+        green = 99.4708025861 * math.log(temperature) - 161.1195681661
+    else:
+        green = 288.1221695283 * ((temperature - 60) ** -0.0755148492)
+        green = clamp(green, 0, 255)
     
-    # Clip values to be within 0 to 1
-    r = min(1.0, max(0.0, r))
-    g = min(1.0, max(0.0, g))
-    b = min(1.0, max(0.0, b))
-    
-    return (r, g, b)
+    if temperature >= 66:
+        blue = 255
+    elif temperature <= 19:
+        blue = 0
+    else:
+        blue = 138.5177312231 * math.log(temperature - 10) - 305.0447927307
+        blue = clamp(blue, 0, 255)
+
+    return (red / 255, green / 255, blue / 255)
 
 def get_sun_elevation_angle(lat, lon, time):
     location = LocationInfo(latitude=lat, longitude=lon)
@@ -60,10 +63,18 @@ def get_location():
 #     else:
 #         return 1 - math.sin(math.radians(elevation_angle))
 
-def get_temperature_percentage(elevation_angle):
+def get_night_shift(elevation_angle):
     return 1 - 1 / (1 + math.exp(-(elevation_angle - 10) / 3))
 
-def set_display_appearance(gammaRed, gammaGreen, gammaBlue, brightness):
+def get_temperature(night_shift):
+    return day_temp + (night_temp - day_temp) * night_shift
+
+GAMMA_FACTOR = 2.2
+
+def get_brightness(night_shift):
+    return 1 - night_dim_percent * math.pow(night_shift, GAMMA_FACTOR) # Gamma function
+
+def set_display_appearance(rgbScale, brightness):
     x11 = ctypes.cdll.LoadLibrary(ctypes.util.find_library("X11"))
     xf86vm = ctypes.cdll.LoadLibrary(ctypes.util.find_library("Xxf86vm"))
 
@@ -77,9 +88,9 @@ def set_display_appearance(gammaRed, gammaGreen, gammaBlue, brightness):
 
     n = size.value
 
-    r = [int(65535 * (i / n) * gammaRed * brightness) for i in range(n)]
-    g = [int(65535 * (i / n) * gammaGreen * brightness) for i in range(n)]
-    b = [int(65535 * (i / n) * gammaBlue * brightness) for i in range(n)]
+    r = [int(65535 * (i / n) * rgbScale[0] * brightness) for i in range(n)]
+    g = [int(65535 * (i / n) * rgbScale[1] * brightness) for i in range(n)]
+    b = [int(65535 * (i / n) * rgbScale[2] * brightness) for i in range(n)]
 
     array_type = ctypes.c_ushort * n
     r_arr = array_type(*r)
@@ -93,16 +104,16 @@ def update():
     latitude, longitude = get_location()
     elevation_angle = get_sun_elevation_angle(latitude, longitude, current_time)
 
-    temperature_percentage = get_temperature_percentage(elevation_angle)
-    temperature = day_temp + (night_temp - day_temp) * temperature_percentage
-    gamma_scale = temperature / NEUTRAL_TEMP
-    brightness_scale = 1 - night_dim_percent * temperature_percentage
+    night_shift = get_night_shift(elevation_angle)
+    temperature = get_temperature(night_shift)
+    rgbScale = get_rgb_from_temp(temperature)
+    brightness = get_brightness(night_shift)
+
+    print(rgbScale)
 
     print(elevation_angle)
 
-    set_display_appearance(1, gamma_scale, gamma_scale, brightness_scale)
-
-    print(temperature, kelvin_to_rgb(temperature))
+    set_display_appearance(rgbScale, brightness)
 
 while True:
     update()

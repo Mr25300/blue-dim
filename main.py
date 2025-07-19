@@ -1,12 +1,12 @@
+import requests
 from datetime import datetime, timezone
 from astral import LocationInfo
 from astral.sun import zenith
-import requests
+import math
 import platform
 import ctypes
 import ctypes.util
 import time
-import math
 
 def clamp(n, minimum, maximum):
     return max(minimum, min(maximum, n))
@@ -151,9 +151,9 @@ class App:
         colour = self.temp_handler.get_temp_colour(night_shift)
         brightness = self.temp_handler.get_temp_brightness(night_shift)
 
-        print(night_shift)
-
         self.display.set_display(colour, brightness)
+
+        print(f"Updated display.\nColour: ({colour[0]}, {colour[1]}, {colour[2]})\nBrightness: {brightness}")
 
 if __name__ == "__main__":
     app = App()

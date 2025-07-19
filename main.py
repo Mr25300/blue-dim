@@ -153,7 +153,7 @@ class App:
 
         self.display.set_display(colour, brightness)
 
-        print(f"Updated display.\nColour: ({colour[0]}, {colour[1]}, {colour[2]})\nBrightness: {brightness}")
+        print(f"Updated display\nColour: ({colour[0]}, {colour[1]}, {colour[2]})\nBrightness: {brightness}")
 
 if __name__ == "__main__":
     app = App()

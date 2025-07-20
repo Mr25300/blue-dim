@@ -7,6 +7,7 @@ import platform
 import ctypes
 import ctypes.util
 import time
+import socket
 
 def clamp(n, minimum, maximum):
     return max(minimum, min(maximum, n))
@@ -127,6 +128,13 @@ class Display:
             blue_arr[i] = int(val * colour[2])
 
         self.xf86vm.XF86VidModeSetGammaRamp(self.display, self.screen, self.c_int_size, red_arr, green_arr, blue_arr)
+
+class CommunicationHandler:
+    def __init__(self) -> None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(('localhost', 0))  # 0 = auto-assign
+        host, port = s.getsockname()
+        print(f"Listening on {host}:{port}")
 
 class App:
     night_handler: LocationTimeHandler

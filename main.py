@@ -7,7 +7,7 @@ import platform
 import ctypes
 import ctypes.util
 import time
-import socket
+# from shared.config import ConfigFileManager
 
 def clamp(n, minimum, maximum):
     return max(minimum, min(maximum, n))
@@ -129,13 +129,6 @@ class Display:
 
         self.xf86vm.XF86VidModeSetGammaRamp(self.display, self.screen, self.c_int_size, red_arr, green_arr, blue_arr)
 
-class CommunicationHandler:
-    def __init__(self) -> None:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(('localhost', 0))  # 0 = auto-assign
-        host, port = s.getsockname()
-        print(f"Listening on {host}:{port}")
-
 class App:
     night_handler: LocationTimeHandler
     temp_handler: TemperatureHandler
@@ -160,8 +153,6 @@ class App:
         brightness = self.temp_handler.get_temp_brightness(night_shift)
 
         self.display.set_display(colour, brightness)
-
-        print(f"Updated display\nColour: ({colour[0]}, {colour[1]}, {colour[2]})\nBrightness: {brightness}")
 
 if __name__ == "__main__":
     app = App()
